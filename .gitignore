@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+
+# OS
+.DS_Store
+
+# Local outputs
+cases/
+*.log
+
+# Real configs with secrets (keep examples committed)
+configs/alarm_filter.json
+configs/sftp.json
+configs/secrets.json

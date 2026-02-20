@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baseband-log-analyzer"
+version = "0.1.0"
+description = "MoShell-based log collector and compact hardware-oriented report for Ericsson Baseband"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "godswork" }]
+dependencies = [
+  "pexpect>=4.9.0",
+  "paramiko>=3.4.0",
+]
+
+[project.scripts]
+bbla = "bbla.main:main"
+
+[tool.setuptools]
+packages = ["bbla"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

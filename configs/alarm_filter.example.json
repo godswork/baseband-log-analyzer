@@ -1,0 +1,10 @@
+{
+  "noise_exact": [
+    "SFP Not Present",
+    "License Key File Fault"
+  ],
+  "noise_prefix": [
+    "Certificate Management a Valid Certificate is Not Available",
+    "Certificate Management Automatic Enrollment Failed"
+  ]
+}
