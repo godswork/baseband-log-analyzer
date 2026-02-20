@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from .utils import repo_root
 
 
 @dataclass(frozen=True)
@@ -36,7 +35,7 @@ class AppArgs:
     moshell_path: Path
     out_dir: Path
     no_upload: bool
-    config_dir: Path
+    config_dir: Path  # may be empty Path() if not provided
 
 
 def _load_json(path: Path, default: dict) -> dict:
@@ -49,6 +48,23 @@ def _load_json(path: Path, default: dict) -> dict:
     merged = default.copy()
     merged.update(data)
     return merged
+
+
+def default_config_dir() -> Path:
+    """
+    Default config directory priority:
+
+    1) BBLA_CONFIG_DIR environment variable
+    2) XDG_CONFIG_HOME/bbla
+    3) ~/.config/bbla
+    """
+    env = os.environ.get("BBLA_CONFIG_DIR", "").strip()
+    if env:
+        return Path(env).expanduser()
+
+    xdg = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    base = Path(xdg).expanduser() if xdg else (Path.home() / ".config")
+    return base / "bbla"
 
 
 def load_alarm_filter(config_dir: Path) -> AlarmFilter:
@@ -66,13 +82,6 @@ def load_alarm_filter(config_dir: Path) -> AlarmFilter:
 
 
 def load_secrets(config_dir: Path) -> Secrets:
-    """
-    secrets.json:
-    {
-      "baseband": {"username":"rbs", "passwords":["rbs","..."]},
-      "sftp": {"password":"..."}
-    }
-    """
     data = _load_json(
         config_dir / "secrets.json",
         {"baseband": {"username": "rbs", "passwords": []}, "sftp": {"password": ""}},
@@ -94,10 +103,6 @@ def load_secrets(config_dir: Path) -> Secrets:
 
 
 def load_sftp_config(config_dir: Path) -> SftpConfig:
-    """
-    sftp.json:
-    {"enabled":true,"host":"...","port":22,"username":"...","remote_base_dir":"/upload/bb-cases"}
-    """
     data = _load_json(config_dir / "sftp.json", {"enabled": False})
     return SftpConfig(
         enabled=bool(data.get("enabled", False)),
@@ -106,11 +111,3 @@ def load_sftp_config(config_dir: Path) -> SftpConfig:
         username=str(data.get("username") or ""),
         remote_base_dir=str(data.get("remote_base_dir") or "").rstrip("/"),
     )
-
-
-def default_config_dir() -> Path:
-    """
-    By default use repo_root/configs (committed examples live there too).
-    Users will create real configs in this folder locally.
-    """
-    return repo_root() / "configs"

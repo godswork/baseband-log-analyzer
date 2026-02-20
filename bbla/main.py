@@ -48,11 +48,15 @@ def rename_case_dir(case_dir: Path, ts: str, hw) -> Path:
 
 
 def parse_args() -> AppArgs:
-    p = argparse.ArgumentParser(description="BB log collector (MoShell): hwpid + llog -l + lga")
+    p = argparse.ArgumentParser(description="Baseband Log Analyzer (bbla)")
     p.add_argument("ip", help="Target IP, e.g. 169.254.2.2")
     p.add_argument("--out", default=str(Path.home() / "cases"), help="Output base dir (default: ~/cases)")
     p.add_argument("--moshell", default=str(Path.home() / "moshell/moshell"), help="Path to moshell script")
-    p.add_argument("--config-dir", default=str(default_config_dir()), help="Config dir (default: repo/configs)")
+    p.add_argument(
+        "--config-dir",
+        default="",
+        help="Config directory (default: BBLA_CONFIG_DIR or XDG_CONFIG_HOME/bbla or ~/.config/bbla)",
+    )
     p.add_argument("--no-upload", action="store_true", help="Disable SFTP upload even if enabled in sftp.json")
     args = p.parse_args()
 
@@ -62,12 +66,16 @@ def parse_args() -> AppArgs:
     if not moshell_path.exists():
         raise SystemExit(f"ERROR: moshell not found: {moshell_path}")
 
+    # IMPORTANT: AppArgs is frozen; we store config_dir as Path() if empty,
+    # and resolve later in main() without mutating args.
+    cfg_dir = Path(args.config_dir).expanduser() if args.config_dir else Path()
+
     return AppArgs(
         ip=args.ip.strip(),
         moshell_path=moshell_path,
         out_dir=Path(args.out).expanduser(),
         no_upload=bool(args.no_upload),
-        config_dir=Path(args.config_dir).expanduser(),
+        config_dir=cfg_dir,
     )
 
 
@@ -75,15 +83,34 @@ def main() -> int:
     args = parse_args()
     ts = time.strftime("%Y%m%d_%H%M%S")
 
-    alarm_filter = load_alarm_filter(args.config_dir)
-    secrets = load_secrets(args.config_dir)
-    sftp_cfg = load_sftp_config(args.config_dir)
+    # Resolve config dir without mutating frozen args
+    config_dir = args.config_dir if str(args.config_dir) not in ("", ".") else default_config_dir()
 
-    # case.json skeleton (we update along the way)
+    secrets_path = config_dir / "secrets.json"
+    if not secrets_path.exists():
+        print(
+            "ERROR: secrets.json not found.\n"
+            f"Expected at: {secrets_path}\n\n"
+            "Create it, for example:\n"
+            f"  mkdir -p {config_dir}\n"
+            "  (then create secrets.json; see README)\n\n"
+            "Override config dir:\n"
+            "  bbla <ip> --config-dir <path>\n"
+            "Or set env var:\n"
+            "  export BBLA_CONFIG_DIR=<path>\n",
+            file=sys.stderr,
+        )
+        return 2
+
+    alarm_filter = load_alarm_filter(config_dir)
+    secrets = load_secrets(config_dir)
+    sftp_cfg = load_sftp_config(config_dir)
+
     meta: dict[str, Any] = {
         "timestamp": ts,
         "ip": args.ip,
         "moshell_script": str(args.moshell_path),
+        "config_dir": str(config_dir),
         "paths": {},
         "login": {},
         "commands": {},
@@ -141,7 +168,6 @@ def main() -> int:
         meta["paths"]["case_dir"] = str(new_case_dir)
         meta["paths"]["raw_dir"] = str(raw_dir)
 
-        # report always
         restarts = parse_llog(llog_txt)
         alarms = parse_lga(lga_txt)
         report_text = render_report(ts, hw, restarts, alarms, alarm_filter)
@@ -151,10 +177,8 @@ def main() -> int:
 
         save_meta(new_case_dir)
 
-        # print report
         print("\n" + report_text)
 
-        # upload
         if meta["upload"]["enabled"] and sftp_cfg.enabled:
             meta["upload"]["attempted"] = True
             try:
@@ -175,13 +199,6 @@ def main() -> int:
         print(f"Case: {new_case_dir}")
         return 0
 
-    except Exception as e:
-        meta["error"] = str(e)
-        try:
-            save_meta(case_dir)
-        except Exception:
-            pass
-        raise
     finally:
         sess.close()
 
